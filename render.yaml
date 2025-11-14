@@ -1,4 +1,4 @@
-hereservices:
+services:
   - type: web
     name: cc-spending-bot
     env: python
