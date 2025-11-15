@@ -1,4 +1,9 @@
 from flask import Flask
+import threading
+import logging
+import sys
+
+# Create Flask app for health checks
 app = Flask(__name__)
 
 @app.route('/')
@@ -9,11 +14,22 @@ def home():
 def health():
     return "✅ Bot is healthy and running!"
 
+@app.route('/ping')
+def ping():
+    return "pong"
+
+def run_flask():
+    """Run Flask app in background"""
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+
+# Start Flask in background thread
+flask_thread = threading.Thread(target=run_flask, daemon=True)
+flask_thread.start()
+
+# Now continue with your main bot code
 import asyncio
 import re
 import time
-import logging
-import sys
 import os
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -26,12 +42,8 @@ from telegram.ext import Application, MessageHandler, filters, ContextTypes
 import imaplib
 import email
 from email.header import decode_header
-import threading
 from dataclasses import dataclass
 from typing import Optional
-from datetime import datetime
-import base64
-from io import BytesIO
 
 # Configure logging
 logging.basicConfig(
@@ -835,15 +847,6 @@ class TelegramBotHandler:
 def main():
     """Main function to start the application"""
     logging.info("🤖 Starting CC Spending Bot on Render...")
-    
-    # Start Flask app in background for health checks
-    from threading import Thread
-    def run_flask():
-        app.run(host='0.0.0.0', port=5000, debug=False)
-    
-    flask_thread = Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
     
     try:
         bot_handler = TelegramBotHandler()
