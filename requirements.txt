@@ -4,3 +4,4 @@ imapclient==2.3.1
 webdriver-manager==4.0.1
 pillow==10.2.0
 flask==2.3.3
+pyyaml==6.0.1
