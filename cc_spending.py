@@ -148,6 +148,21 @@ class CoinGateAutomation:
         except Exception as e:
             logging.error(f"❌ Failed to send message: {e}")
 
+    async def debug_check_driver(self):
+        """Debug method to check driver status"""
+        try:
+            if self.driver:
+                current_url = self.driver.current_url
+                page_title = self.driver.title
+                await self.send_message(f"🔧 Driver Status: ACTIVE\nURL: {current_url}\nTitle: {page_title}")
+                return True
+            else:
+                await self.send_message("❌ Driver Status: NOT INITIALIZED")
+                return False
+        except Exception as e:
+            await self.send_message(f"❌ Driver Error: {e}")
+            return False
+
     def extract_card_info(self, message: str) -> Optional[CardInfo]:
         """Extract card information from Telegram message with improved parsing"""
         try:
@@ -1063,10 +1078,20 @@ Current Card: {self.automation.current_card.card_number[-4:] if self.automation.
                         self.automation.running = False
                         self.current_card_thread.join(timeout=10)
                     
-                    # Start automation in separate thread
+                    # FIXED: Create a new event loop for the thread
                     def run_automation():
-                        asyncio.run(self.automation.process_card(card_info))
-                        self.is_processing = False
+                        try:
+                            # Create new event loop for this thread
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            
+                            # Run the automation
+                            loop.run_until_complete(self.automation.process_card(card_info))
+                            loop.close()
+                        except Exception as e:
+                            logging.error(f"❌ Automation thread error: {e}")
+                        finally:
+                            self.is_processing = False
                     
                     self.current_card_thread = threading.Thread(target=run_automation)
                     self.current_card_thread.daemon = True
@@ -1078,6 +1103,11 @@ Card: {card_info.card_number[-4:]}
 Type: {card_info.card_type}
 First Amount: {'$500' if card_info.card_type.lower() == 'mastercard' else '$100'}
                     """.strip())
+                    
+                    # Send immediate confirmation and debug info
+                    await self.automation.send_message("🚀 Automation thread started successfully!")
+                    await self.automation.send_message("🔧 Checking driver status...")
+                    await self.automation.debug_check_driver()
                 else:
                     await update.message.reply_text("❌ Failed to parse card information. Please check the format.")
             
