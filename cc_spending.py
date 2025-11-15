@@ -1,3 +1,14 @@
+from flask import Flask
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "🤖 CC Spending Bot is Running!"
+
+@app.route('/health')
+def health():
+    return "✅ Bot is healthy and running!"
+
 import asyncio
 import re
 import time
@@ -824,6 +835,15 @@ class TelegramBotHandler:
 def main():
     """Main function to start the application"""
     logging.info("🤖 Starting CC Spending Bot on Render...")
+    
+    # Start Flask app in background for health checks
+    from threading import Thread
+    def run_flask():
+        app.run(host='0.0.0.0', port=5000, debug=False)
+    
+    flask_thread = Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
     
     try:
         bot_handler = TelegramBotHandler()
