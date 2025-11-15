@@ -1,4 +1,3 @@
-
 from flask import Flask
 import threading
 import logging
@@ -16,7 +15,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import imaplib
 import email
 from email.header import decode_header
@@ -527,7 +526,7 @@ class CoinGateAutomation:
                 for selector in field_group:
                     try:
                         field = WebDriverWait(self.driver, 5).until(
-                            EC.element_to_be_lickable((By.XPATH, selector))
+                            EC.element_to_be_clickable((By.XPATH, selector))
                         )
                         field.clear()
                         
@@ -973,8 +972,68 @@ class TelegramBotHandler:
         self.current_card_thread = None
         self.is_processing = False
     
-    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle incoming Telegram messages"""
+    async def handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /start command"""
+        await update.message.reply_text("""
+🤖 CC SPENDING BOT READY
+
+Commands:
+• Send card in format to start automation
+• Send OTP when required
+• /status - Check bot status  
+• /stop - Stop automation
+• /check_email - Check deliveries
+• /screenshot - Get current page
+
+Format for card:
+💳 New Card Added
+👤 Cardholder Name: 
+💳 Card Number: 
+🏦 Card Type: 
+📅 Expiry: 
+🔐 CVC: 
+🏠 Billing Address: 
+⏰ Time: 
+        """.strip())
+    
+    async def handle_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /status command"""
+        if self.automation:
+            status = "🟢 RUNNING" if self.automation.running else "🔴 STOPPED"
+            processing = "🔄 PROCESSING" if self.is_processing else "⏸️ IDLE"
+            await update.message.reply_text(f"""
+🤖 BOT STATUS
+Automation: {status}
+Processing: {processing}
+Transactions: {self.automation.transaction_count}
+Current Card: {self.automation.current_card.card_number[-4:] if self.automation.current_card else 'None'}
+            """.strip())
+        else:
+            await update.message.reply_text("❌ No active automation session")
+    
+    async def handle_stop(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /stop command"""
+        if self.automation and self.is_processing:
+            self.automation.running = False
+            self.is_processing = False
+            await update.message.reply_text("🛑 Automation stopped")
+        else:
+            await update.message.reply_text("❌ No active automation to stop")
+    
+    async def handle_check_email(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /check_email command"""
+        email_status = self.email_checker.check_delivery_status()
+        await update.message.reply_text(f"📧 {email_status}")
+    
+    async def handle_screenshot(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /screenshot command"""
+        if self.automation and self.automation.driver and self.is_processing:
+            await self.automation.send_screenshot("📸 Manual Screenshot Request")
+        else:
+            await update.message.reply_text("❌ No active automation session for screenshot")
+    
+    async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle incoming text messages (non-command)"""
         try:
             message_text = update.message.text
             chat_id = update.effective_chat.id
@@ -1032,69 +1091,22 @@ First Amount: {'$500' if card_info.card_type.lower() == 'mastercard' else '$100'
                         await update.message.reply_text("❌ Failed to parse OTP information")
                 else:
                     await update.message.reply_text("❌ No active automation session to use OTP")
-            
-            elif message_text.lower() == "/status":
-                if self.automation:
-                    status = "🟢 RUNNING" if self.automation.running else "🔴 STOPPED"
-                    processing = "🔄 PROCESSING" if self.is_processing else "⏸️ IDLE"
-                    await update.message.reply_text(f"""
-🤖 BOT STATUS
-Automation: {status}
-Processing: {processing}
-Transactions: {self.automation.transaction_count}
-Current Card: {self.automation.current_card.card_number[-4:] if self.automation.current_card else 'None'}
-                    """.strip())
-                else:
-                    await update.message.reply_text("❌ No active automation session")
-            
-            elif message_text.lower() == "/stop":
-                if self.automation and self.is_processing:
-                    self.automation.running = False
-                    self.is_processing = False
-                    await update.message.reply_text("🛑 Automation stopped")
-                else:
-                    await update.message.reply_text("❌ No active automation to stop")
-            
-            elif message_text.lower() == "/check_email":
-                email_status = self.email_checker.check_delivery_status()
-                await update.message.reply_text(f"📧 {email_status}")
-            
-            elif message_text.lower() == "/screenshot":
-                if self.automation and self.automation.driver and self.is_processing:
-                    await self.automation.send_screenshot("📸 Manual Screenshot Request")
-                else:
-                    await update.message.reply_text("❌ No active automation session for screenshot")
-            
-            elif message_text.lower() == "/start":
-                await update.message.reply_text("""
-🤖 CC SPENDING BOT READY
-
-Commands:
-• Send card in format to start automation
-• Send OTP when required
-• /status - Check bot status
-• /stop - Stop automation
-• /check_email - Check deliveries
-• /screenshot - Get current page
-
-Format for card:
-💳 New Card Added
-👤 Cardholder Name: 
-💳 Card Number: 
-🏦 Card Type: 
-📅 Expiry: 
-🔐 CVC: 
-🏠 Billing Address: 
-⏰ Time: 
-                """.strip())
                 
         except Exception as e:
             logging.error(f"❌ Error handling Telegram message: {e}")
             await update.message.reply_text(f"❌ Error: {str(e)}")
 
     def start_bot(self):
-        """Start the Telegram bot"""
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+        """Start the Telegram bot with proper command handlers"""
+        # Add command handlers
+        self.application.add_handler(CommandHandler("start", self.handle_start))
+        self.application.add_handler(CommandHandler("status", self.handle_status))
+        self.application.add_handler(CommandHandler("stop", self.handle_stop))
+        self.application.add_handler(CommandHandler("check_email", self.handle_check_email))
+        self.application.add_handler(CommandHandler("screenshot", self.handle_screenshot))
+        
+        # Add text message handler for cards and OTP
+        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text_message))
         
         logging.info("🤖 Starting Telegram bot on Render...")
         self.application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
